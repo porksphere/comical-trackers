@@ -1,0 +1,12 @@
+{
+  "name": "comical-trackers",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AniList and MyAnimeList trackers for Comical — sync manga reading progress to your account.",
+  "scripts": {
+    "build": "bun run build.ts",
+    "typecheck": "tsc --noEmit",
+    "publish:registry": "bun run publish.ts"
+  }
+}
