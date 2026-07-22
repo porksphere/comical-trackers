@@ -5,6 +5,21 @@ progress to third-party tracking services. Published as a Comical registry: poin
 repo's raw `index.json` and it can install trackers directly from GitHub, no separate hosting
 needed.
 
+## Use this registry in the app
+
+**One-click (if you already have the Comical app installed):**
+[Add the tracker registry](https://porksphere.github.io/comical-app/add-registry?url=https%3A%2F%2Fraw.githubusercontent.com%2Fporksphere%2Fcomical-trackers%2Fmain%2Findex.json)
+
+Or point the app at the registry's `index.json` manually:
+
+```
+https://raw.githubusercontent.com/porksphere/comical-trackers/main/index.json
+```
+
+Set it as `EXPO_PUBLIC_COMICAL_REGISTRY` in the app's gitignored `apps/mobile/.env.local` (dev
+pre-adds a single registry), or add it from the app's registry settings. For the desktop CLI:
+`comical registry add https://raw.githubusercontent.com/porksphere/comical-trackers/main/index.json`.
+
 ## Trackers
 
 | Tracker | Service | Auth |
