@@ -3,9 +3,10 @@
  *
  * Authentication: OAuth 2.0 implicit grant (AniList has no PKCE support, so an
  * authorization-code exchange would require a client secret; the implicit grant needs none).
- * Register one app at https://anilist.co/settings/developer, set ANILIST_CLIENT_ID below, and
- * leave the app's redirect URI unset — AniList then redirects to its own token-display page,
- * where the user copies the token back into Comical.
+ * Register one app at https://anilist.co/settings/developer, set ANILIST_CLIENT_ID below, and set
+ * the app's "Redirect URL" to exactly ANILIST_REDIRECT_URI — the Comical app's own static OAuth
+ * relay page. AniList redirects the token there and the relay hands it straight back into the app
+ * (custom-scheme deep link on native, postMessage on web), so nothing is ever copy-pasted.
  *
  * All API calls use the single GraphQL endpoint (POST https://graphql.anilist.co).
  * The rate limit is 90 req/min per IP; 1 req/700 ms keeps well inside that.
@@ -28,14 +29,17 @@ const GQL_ENDPOINT = "https://graphql.anilist.co";
 const PER_PAGE = 50;
 
 // Register once at https://anilist.co/settings/developer. The app registered for this client id
-// MUST have its "Redirect URL" set to exactly `comical://oauth-callback/anilist` (the value below)
-// so AniList's implicit grant redirects the token back into the app's own URL scheme.
+// MUST have its "Redirect URL" set to exactly ANILIST_REDIRECT_URI (the value below).
 const ANILIST_CLIENT_ID = "43038";
 
-// The Comical app's own custom-scheme deep link (app.json `scheme: "comical"`). An in-app auth
-// session (ASWebAuthenticationSession / Android Custom Tabs) intercepts this redirect and hands the
-// URL — with the token in its fragment — straight back to the app, so nothing is ever copy-pasted.
-const ANILIST_REDIRECT_URI = "comical://oauth-callback/anilist";
+// AniList's implicit grant only redirects a token to a registered **https** URL — a custom
+// `comical://` scheme is rejected ("unsupported_grant_type"). So we register the Comical app's own
+// static relay page (served from its web deploy) as the Redirect URL; AniList lands there with the
+// token in the URL fragment, and the relay bounces it back into the app — to the `comical://` scheme
+// inside the native in-app auth session, or via postMessage to the opener on web. One registered
+// https URL serves every platform, with no client secret and no copy-paste. Keep this byte-for-byte
+// identical to what's registered on the AniList app AND to the relay's deployed path.
+const ANILIST_REDIRECT_URI = "https://porksphere.github.io/comical-app/oauth-relay.html";
 
 const SETTINGS = defineSettings([
   {
@@ -46,11 +50,11 @@ const SETTINGS = defineSettings([
     required: true,
     // Implicit grant (`response_type=token`): AniList returns a long-lived access token directly in
     // the redirect's URL fragment — no code exchange, so no client secret (which we deliberately
-    // don't ship). The redirect points at the app's own `comical://` scheme; the client recognises
-    // an implicit-grant oauth-pin whose redirect_uri uses its own scheme and captures the fragment
-    // token via an in-app auth session instead of a copy-paste box. (We do NOT use AniList's
-    // `/oauth/pin` page: that page is the front end of the authorization-CODE grant and tries to run
-    // a secret-based token exchange, which fails here with `unsupported_grant_type`.)
+    // don't ship). The redirect points at our https relay (see ANILIST_REDIRECT_URI); the client
+    // recognises an implicit-grant oauth-pin and captures the fragment token via an in-app auth
+    // session (native) or a popup (web) instead of a copy-paste box. (We do NOT use AniList's
+    // `/oauth/pin` page — its front end runs a secret-based code exchange that fails here — and
+    // AniList won't redirect an implicit token to a custom `comical://` scheme, hence the relay.)
     authUrl:
       "https://anilist.co/api/v2/oauth/authorize" +
       `?client_id=${ANILIST_CLIENT_ID}` +
@@ -122,7 +126,7 @@ class AniListTracker extends TrackerBase<Settings> {
   readonly info: TrackerInfo = {
     id: "anilist",
     name: "AniList",
-    version: "0.1.2",
+    version: "0.1.3",
     contractVersion: "1.0.0",
     capabilities: ["library-sync", "status-sync", "search", "settings"],
     rateLimit: { maxConcurrent: 1, minIntervalMs: 700 },
