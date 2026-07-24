@@ -1,12 +1,12 @@
 {
   "registryVersion": "1",
-  "updated": "2026-07-24T17:29:38.847Z",
+  "updated": "2026-07-24T19:38:35.137Z",
   "bridges": [],
   "trackers": [
     {
       "id": "anilist",
       "name": "AniList",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "contractVersion": "1.0.0",
       "capabilities": [
         "library-sync",
@@ -14,8 +14,8 @@
         "search",
         "settings"
       ],
-      "url": "https://raw.githubusercontent.com/porksphere/comical-trackers/main/trackers/anilist/0.1.3/tracker.js",
-      "sha256": "8fc5269e7ff643d2a948c3bad2d9b975961e6d2e9d2fe8c46733107c24124d7c"
+      "url": "https://raw.githubusercontent.com/porksphere/comical-trackers/main/trackers/anilist/0.1.4/tracker.js",
+      "sha256": "dcb69faa3cda6f902f5081766fd2880ffbbe4ece901234259b40565e7375d46a"
     },
     {
       "id": "mal",

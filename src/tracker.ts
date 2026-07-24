@@ -4,9 +4,9 @@
  * Authentication: OAuth 2.0 implicit grant (AniList has no PKCE support, so an
  * authorization-code exchange would require a client secret; the implicit grant needs none).
  * Register one app at https://anilist.co/settings/developer, set ANILIST_CLIENT_ID below, and set
- * the app's "Redirect URL" to exactly ANILIST_REDIRECT_URI — the Comical app's own static OAuth
- * relay page. AniList redirects the token there and the relay hands it straight back into the app
- * (custom-scheme deep link on native, postMessage on web), so nothing is ever copy-pasted.
+ * the app's "Redirect URL" to the Comical app's own static OAuth relay page (see the comment on
+ * ANILIST_CLIENT_ID). AniList redirects the token there and the relay hands it straight back into
+ * the app (custom-scheme deep link on native, postMessage on web), so nothing is ever copy-pasted.
  *
  * All API calls use the single GraphQL endpoint (POST https://graphql.anilist.co).
  * The rate limit is 90 req/min per IP; 1 req/700 ms keeps well inside that.
@@ -28,18 +28,19 @@ import {
 const GQL_ENDPOINT = "https://graphql.anilist.co";
 const PER_PAGE = 50;
 
-// Register once at https://anilist.co/settings/developer. The app registered for this client id
-// MUST have its "Redirect URL" set to exactly ANILIST_REDIRECT_URI (the value below).
+// Register once at https://anilist.co/settings/developer. The app for this client id MUST have its
+// "Redirect URL" set to exactly the relay page below — AniList's implicit grant takes the redirect
+// from the app's *settings*, NOT from a `redirect_uri` query param (see the authUrl note):
+//
+//     https://porksphere.github.io/comical-app/oauth-relay.html
+//
+// AniList only redirects an implicit token to a registered **https** URL — a custom `comical://`
+// scheme is rejected — so we register the Comical app's own static relay page (served from its web
+// deploy). AniList lands there with the token in the URL fragment, and the relay bounces it back
+// into the app: to the `comical://` scheme inside the native in-app auth session, or via postMessage
+// to the opener on web. One registered https URL serves every platform, with no client secret and no
+// copy-paste. Keep it byte-for-byte identical to the AniList app setting AND the relay's deployed path.
 const ANILIST_CLIENT_ID = "43038";
-
-// AniList's implicit grant only redirects a token to a registered **https** URL — a custom
-// `comical://` scheme is rejected ("unsupported_grant_type"). So we register the Comical app's own
-// static relay page (served from its web deploy) as the Redirect URL; AniList lands there with the
-// token in the URL fragment, and the relay bounces it back into the app — to the `comical://` scheme
-// inside the native in-app auth session, or via postMessage to the opener on web. One registered
-// https URL serves every platform, with no client secret and no copy-paste. Keep this byte-for-byte
-// identical to what's registered on the AniList app AND to the relay's deployed path.
-const ANILIST_REDIRECT_URI = "https://porksphere.github.io/comical-app/oauth-relay.html";
 
 const SETTINGS = defineSettings([
   {
@@ -50,16 +51,18 @@ const SETTINGS = defineSettings([
     required: true,
     // Implicit grant (`response_type=token`): AniList returns a long-lived access token directly in
     // the redirect's URL fragment — no code exchange, so no client secret (which we deliberately
-    // don't ship). The redirect points at our https relay (see ANILIST_REDIRECT_URI); the client
-    // recognises an implicit-grant oauth-pin and captures the fragment token via an in-app auth
-    // session (native) or a popup (web) instead of a copy-paste box. (We do NOT use AniList's
-    // `/oauth/pin` page — its front end runs a secret-based code exchange that fails here — and
-    // AniList won't redirect an implicit token to a custom `comical://` scheme, hence the relay.)
+    // don't ship). The client recognises an implicit-grant oauth-pin and captures the fragment token
+    // via an in-app auth session (native) or a popup (web) instead of a copy-paste box.
+    //
+    // NB: the implicit grant takes NO `redirect_uri` query param — AniList redirects to whatever is
+    // configured in the app's settings (the relay page; see ANILIST_CLIENT_ID above). Passing a
+    // `redirect_uri` here is a *code*-grant parameter and makes AniList reject the request with
+    // `unsupported_grant_type`. So this URL is only `client_id` + `response_type=token`. (We also do
+    // NOT use AniList's `/oauth/pin` page — its front end runs a secret-based code exchange.)
     authUrl:
       "https://anilist.co/api/v2/oauth/authorize" +
       `?client_id=${ANILIST_CLIENT_ID}` +
-      "&response_type=token" +
-      `&redirect_uri=${encodeURIComponent(ANILIST_REDIRECT_URI)}`,
+      "&response_type=token",
   },
 ]);
 type Settings = InferSettings<typeof SETTINGS>;
@@ -126,7 +129,7 @@ class AniListTracker extends TrackerBase<Settings> {
   readonly info: TrackerInfo = {
     id: "anilist",
     name: "AniList",
-    version: "0.1.3",
+    version: "0.1.4",
     contractVersion: "1.0.0",
     capabilities: ["library-sync", "status-sync", "search", "settings"],
     rateLimit: { maxConcurrent: 1, minIntervalMs: 700 },
