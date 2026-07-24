@@ -27,28 +27,35 @@ import {
 const GQL_ENDPOINT = "https://graphql.anilist.co";
 const PER_PAGE = 50;
 
-// Register once at https://anilist.co/settings/developer — no redirect URI needed for the
-// implicit grant (AniList defaults to its own token-display page when none is set).
+// Register once at https://anilist.co/settings/developer. The app registered for this client id
+// MUST have its "Redirect URL" set to exactly `comical://oauth-callback/anilist` (the value below)
+// so AniList's implicit grant redirects the token back into the app's own URL scheme.
 const ANILIST_CLIENT_ID = "43038";
+
+// The Comical app's own custom-scheme deep link (app.json `scheme: "comical"`). An in-app auth
+// session (ASWebAuthenticationSession / Android Custom Tabs) intercepts this redirect and hands the
+// URL — with the token in its fragment — straight back to the app, so nothing is ever copy-pasted.
+const ANILIST_REDIRECT_URI = "comical://oauth-callback/anilist";
 
 const SETTINGS = defineSettings([
   {
     type: "oauth-pin",
     key: "token",
     label: "AniList Account",
-    description:
-      "Open AniList, authorize Comical, then paste the token AniList shows you back here.",
+    description: "Sign in to AniList to sync your reading progress.",
     required: true,
-    // Pin the redirect to AniList's own token-display page explicitly, rather than relying on the
-    // developer app's default registered redirect URI. Omitting it makes AniList fall back to
-    // whatever redirect is registered for client 43038 — and if that's ever pointed at a custom
-    // scheme (e.g. the app's `comical://oauth-callback/...` deep link), the browser can't render it
-    // and the paste flow breaks. Being explicit keeps the oauth-pin flow working regardless.
+    // Implicit grant (`response_type=token`): AniList returns a long-lived access token directly in
+    // the redirect's URL fragment — no code exchange, so no client secret (which we deliberately
+    // don't ship). The redirect points at the app's own `comical://` scheme; the client recognises
+    // an implicit-grant oauth-pin whose redirect_uri uses its own scheme and captures the fragment
+    // token via an in-app auth session instead of a copy-paste box. (We do NOT use AniList's
+    // `/oauth/pin` page: that page is the front end of the authorization-CODE grant and tries to run
+    // a secret-based token exchange, which fails here with `unsupported_grant_type`.)
     authUrl:
       "https://anilist.co/api/v2/oauth/authorize" +
       `?client_id=${ANILIST_CLIENT_ID}` +
       "&response_type=token" +
-      `&redirect_uri=${encodeURIComponent("https://anilist.co/api/v2/oauth/pin")}`,
+      `&redirect_uri=${encodeURIComponent(ANILIST_REDIRECT_URI)}`,
   },
 ]);
 type Settings = InferSettings<typeof SETTINGS>;
@@ -115,7 +122,7 @@ class AniListTracker extends TrackerBase<Settings> {
   readonly info: TrackerInfo = {
     id: "anilist",
     name: "AniList",
-    version: "0.1.1",
+    version: "0.1.2",
     contractVersion: "1.0.0",
     capabilities: ["library-sync", "status-sync", "search", "settings"],
     rateLimit: { maxConcurrent: 1, minIntervalMs: 700 },
