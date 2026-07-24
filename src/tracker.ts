@@ -39,10 +39,16 @@ const SETTINGS = defineSettings([
     description:
       "Open AniList, authorize Comical, then paste the token AniList shows you back here.",
     required: true,
+    // Pin the redirect to AniList's own token-display page explicitly, rather than relying on the
+    // developer app's default registered redirect URI. Omitting it makes AniList fall back to
+    // whatever redirect is registered for client 43038 — and if that's ever pointed at a custom
+    // scheme (e.g. the app's `comical://oauth-callback/...` deep link), the browser can't render it
+    // and the paste flow breaks. Being explicit keeps the oauth-pin flow working regardless.
     authUrl:
       "https://anilist.co/api/v2/oauth/authorize" +
       `?client_id=${ANILIST_CLIENT_ID}` +
-      "&response_type=token",
+      "&response_type=token" +
+      `&redirect_uri=${encodeURIComponent("https://anilist.co/api/v2/oauth/pin")}`,
   },
 ]);
 type Settings = InferSettings<typeof SETTINGS>;
@@ -109,7 +115,7 @@ class AniListTracker extends TrackerBase<Settings> {
   readonly info: TrackerInfo = {
     id: "anilist",
     name: "AniList",
-    version: "0.1.0",
+    version: "0.1.1",
     contractVersion: "1.0.0",
     capabilities: ["library-sync", "status-sync", "search", "settings"],
     rateLimit: { maxConcurrent: 1, minIntervalMs: 700 },
