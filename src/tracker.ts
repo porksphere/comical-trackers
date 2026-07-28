@@ -89,6 +89,16 @@ const FROM_TRACKER: Readonly<Record<TrackerStatus, AniListStatus>> = {
   rereading: "REPEATING",
 };
 
+/**
+ * Split the contract's `YYYY-MM-DD` into AniList's `FuzzyDateInput`. The shape is deliberately
+ * loose on AniList's side (any component may be null), but the contract's schema guarantees all
+ * three here, so this is a pure reshape.
+ */
+function fuzzyDate(date: string): { year: number; month: number; day: number } {
+  const [year, month, day] = date.split("-").map(Number) as [number, number, number];
+  return { year, month, day };
+}
+
 // ── Wire DTOs ─────────────────────────────────────────────────────────────────
 
 interface GqlResponse<T> {
@@ -110,6 +120,8 @@ interface Media {
   title: MediaTitle;
   coverImage: CoverImage;
   description: string | null;
+  /** AniList's own chapter count. Null while a series is ongoing or simply unrecorded. */
+  chapters?: number | null;
 }
 
 interface MediaListEntry {
@@ -129,7 +141,7 @@ class AniListTracker extends TrackerBase<Settings> {
   readonly info: TrackerInfo = {
     id: "anilist",
     name: "AniList",
-    version: "0.1.4",
+    version: "0.1.5",
     contractVersion: "1.0.0",
     capabilities: ["library-sync", "status-sync", "search", "settings"],
     rateLimit: { maxConcurrent: 1, minIntervalMs: 700 },
@@ -202,6 +214,7 @@ class AniListTracker extends TrackerBase<Settings> {
               title { romaji english }
               coverImage { medium }
               description(asHtml: false)
+              chapters
             }
             status
             progress
@@ -220,6 +233,8 @@ class AniListTracker extends TrackerBase<Settings> {
         status: TO_TRACKER[entry.status] ?? "planning",
       };
       if (entry.progress > 0) item.chaptersRead = entry.progress;
+      // Only meaningful when AniList actually knows the count — it reports null for ongoing series.
+      if (entry.media.chapters && entry.media.chapters > 0) item.totalChapters = entry.media.chapters;
       if (entry.media.coverImage.medium) item.thumbnailUrl = entry.media.coverImage.medium;
       return item;
     });
@@ -239,10 +254,17 @@ class AniListTracker extends TrackerBase<Settings> {
     // AniList score is 0–100 on POINT_100 format, matching the contract's 0–100 range
     if (update.score !== undefined) vars.score = update.score;
     if (update.notes !== undefined) vars.notes = update.notes;
+    // AniList models reading dates as FuzzyDateInput — each component independently nullable — so
+    // the contract's `YYYY-MM-DD` splits into it directly. Note the naming: the mutation's finish
+    // date is `completedAt`, not `finishedAt`.
+    if (update.startedAt !== undefined) vars.startedAt = fuzzyDate(update.startedAt);
+    if (update.finishedAt !== undefined) vars.completedAt = fuzzyDate(update.finishedAt);
 
     await this.gql<{ SaveMediaListEntry: { id: number } }>(
-      `mutation ($mediaId: Int, $status: MediaListStatus, $progress: Int, $score: Float, $notes: String) {
-        SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress, score: $score, notes: $notes) {
+      `mutation ($mediaId: Int, $status: MediaListStatus, $progress: Int, $score: Float, $notes: String,
+                 $startedAt: FuzzyDateInput, $completedAt: FuzzyDateInput) {
+        SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress, score: $score, notes: $notes,
+                           startedAt: $startedAt, completedAt: $completedAt) {
           id
         }
       }`,

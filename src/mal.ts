@@ -111,7 +111,7 @@ class MalTracker extends TrackerBase<Settings> {
   readonly info: TrackerInfo = {
     id: "mal",
     name: "MyAnimeList",
-    version: "0.1.0",
+    version: "0.1.1",
     contractVersion: "1.0.0",
     capabilities: ["library-sync", "status-sync", "search", "settings"],
     rateLimit: { maxConcurrent: 1, minIntervalMs: 1000 },
@@ -156,7 +156,7 @@ class MalTracker extends TrackerBase<Settings> {
   async getLibrary(page: number): Promise<PagedResults<TrackerLibraryEntry>> {
     const offset = (page - 1) * PER_PAGE;
     const data = await this.get<MalPage<MalListEntry>>("/users/@me/mangalist", {
-      fields: "list_status,main_picture",
+      fields: "list_status,main_picture,num_chapters",
       sort: "list_updated_at",
       limit: String(PER_PAGE),
       offset: String(offset),
@@ -169,6 +169,8 @@ class MalTracker extends TrackerBase<Settings> {
         status: TO_TRACKER[list_status.status] ?? "planning",
       };
       if (list_status.num_chapters_read > 0) item.chaptersRead = list_status.num_chapters_read;
+      // MAL reports 0 for a series it has no chapter count for (ongoing or simply unrecorded).
+      if (node.num_chapters !== undefined && node.num_chapters > 0) item.totalChapters = node.num_chapters;
       if (node.main_picture?.medium) item.thumbnailUrl = node.main_picture.medium;
       return item;
     });
@@ -184,6 +186,9 @@ class MalTracker extends TrackerBase<Settings> {
     if (update.chaptersRead !== undefined) fields.num_chapters_read = String(Math.floor(update.chaptersRead));
     // MAL score: 0–10 integer; contract score: 0–100
     if (update.score !== undefined) fields.score = String(Math.round(update.score / 10));
+    // MAL takes reading dates as `YYYY-MM-DD` — the contract's shape verbatim, no conversion.
+    if (update.startedAt !== undefined) fields.start_date = update.startedAt;
+    if (update.finishedAt !== undefined) fields.finish_date = update.finishedAt;
     if (Object.keys(fields).length === 0) return;
     await this.patch(`/manga/${externalId}/my_list_status`, fields);
   }
