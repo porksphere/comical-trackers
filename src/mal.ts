@@ -124,8 +124,8 @@ class MalTracker extends TrackerBase<Settings> {
   readonly info: TrackerInfo = {
     id: "mal",
     name: "MyAnimeList",
-    version: "0.1.1",
-    contractVersion: "1.0.0",
+    version: "0.2.0",
+    contractVersion: "2.0.0",
     capabilities: ["library-sync", "status-sync", "search", "settings"],
     rateLimit: { maxConcurrent: 1, minIntervalMs: 1000 },
   };
