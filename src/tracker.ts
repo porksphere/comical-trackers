@@ -16,6 +16,7 @@ import {
   defineTracker,
   defineSettings,
   type InferSettings,
+  type PagedRequest,
   type PagedResults,
   type SettingDescriptor,
   type TrackerEntryUpdate,
@@ -23,6 +24,8 @@ import {
   type TrackerLibraryEntry,
   type TrackerSearchResult,
   type TrackerStatus,
+  nextPageCursor,
+  pageFromCursor,
 } from "@comical/sdk";
 
 const GQL_ENDPOINT = "https://graphql.anilist.co";
@@ -200,7 +203,9 @@ class AniListTracker extends TrackerBase<Settings> {
 
   // ── library-sync ──────────────────────────────────────────────────────────
 
-  async getLibrary(page: number): Promise<PagedResults<TrackerLibraryEntry>> {
+  async getLibrary(req: PagedRequest = {}): Promise<PagedResults<TrackerLibraryEntry>> {
+    // AniList's Page type is page-numbered and reports hasNextPage, so the cursor is a page number.
+    const page = pageFromCursor(req.cursor);
     const userId = await this.getViewerId();
     const data = await this.gql<{
       Page: { pageInfo: PageInfo; mediaList: MediaListEntry[] };
@@ -239,7 +244,7 @@ class AniListTracker extends TrackerBase<Settings> {
       return item;
     });
 
-    return { items, page, hasNextPage: data.Page.pageInfo.hasNextPage };
+    return { items, nextCursor: nextPageCursor(page, data.Page.pageInfo.hasNextPage) };
   }
 
   // ── status-sync ───────────────────────────────────────────────────────────
@@ -274,7 +279,8 @@ class AniListTracker extends TrackerBase<Settings> {
 
   // ── search ────────────────────────────────────────────────────────────────
 
-  async search(query: string, page: number): Promise<PagedResults<TrackerSearchResult>> {
+  async search(query: string, req: PagedRequest = {}): Promise<PagedResults<TrackerSearchResult>> {
+    const page = pageFromCursor(req.cursor);
     const data = await this.gql<{
       Page: { pageInfo: PageInfo; media: Media[] };
     }>(
@@ -303,7 +309,7 @@ class AniListTracker extends TrackerBase<Settings> {
       return item;
     });
 
-    return { items, page, hasNextPage: data.Page.pageInfo.hasNextPage };
+    return { items, nextCursor: nextPageCursor(page, data.Page.pageInfo.hasNextPage) };
   }
 }
 

@@ -12,7 +12,9 @@ import {
   TrackerBase,
   defineTracker,
   defineSettings,
+  type Cursor,
   type InferSettings,
+  type PagedRequest,
   type PagedResults,
   type SettingDescriptor,
   type TrackerEntryUpdate,
@@ -20,6 +22,8 @@ import {
   type TrackerLibraryEntry,
   type TrackerSearchResult,
   type TrackerStatus,
+  encodeCursor,
+  offsetFromCursor,
 } from "@comical/sdk";
 
 const API_BASE = "https://api.myanimelist.net/v2";
@@ -105,6 +109,15 @@ interface MalPage<T> {
   paging: { next?: string; previous?: string };
 }
 
+/**
+ * Cursor for the window after `offset`. MAL is offset-based but answers "is there more" with a
+ * `paging.next` link rather than a total, so the offset comes from the rows actually returned and the
+ * link decides whether there is a next window at all. An empty window ends the walk regardless of
+ * the link — a cursor that doesn't advance is the infinite-scroll loop cursors exist to prevent.
+ */
+const nextWindow = (offset: number, count: number, next: string | undefined): Cursor | undefined =>
+  count > 0 && next ? encodeCursor({ offset: offset + count }) : undefined;
+
 // ── Tracker class ─────────────────────────────────────────────────────────────
 
 class MalTracker extends TrackerBase<Settings> {
@@ -153,8 +166,8 @@ class MalTracker extends TrackerBase<Settings> {
 
   // ── library-sync ──────────────────────────────────────────────────────────
 
-  async getLibrary(page: number): Promise<PagedResults<TrackerLibraryEntry>> {
-    const offset = (page - 1) * PER_PAGE;
+  async getLibrary(req: PagedRequest = {}): Promise<PagedResults<TrackerLibraryEntry>> {
+    const offset = offsetFromCursor(req.cursor);
     const data = await this.get<MalPage<MalListEntry>>("/users/@me/mangalist", {
       fields: "list_status,main_picture,num_chapters",
       sort: "list_updated_at",
@@ -175,7 +188,7 @@ class MalTracker extends TrackerBase<Settings> {
       return item;
     });
 
-    return { items, page, hasNextPage: !!data.paging.next };
+    return { items, nextCursor: nextWindow(offset, items.length, data.paging.next) };
   }
 
   // ── status-sync ───────────────────────────────────────────────────────────
@@ -195,8 +208,8 @@ class MalTracker extends TrackerBase<Settings> {
 
   // ── search ────────────────────────────────────────────────────────────────
 
-  async search(query: string, page: number): Promise<PagedResults<TrackerSearchResult>> {
-    const offset = (page - 1) * 20;
+  async search(query: string, req: PagedRequest = {}): Promise<PagedResults<TrackerSearchResult>> {
+    const offset = offsetFromCursor(req.cursor);
     const data = await this.get<MalPage<{ node: MalMangaNode }>>("/manga", {
       q: query,
       limit: "20",
@@ -211,7 +224,7 @@ class MalTracker extends TrackerBase<Settings> {
       return item;
     });
 
-    return { items, page, hasNextPage: !!data.paging.next };
+    return { items, nextCursor: nextWindow(offset, items.length, data.paging.next) };
   }
 }
 
