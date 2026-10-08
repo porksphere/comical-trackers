@@ -1,0 +1,105 @@
+# Rebuild + republish the tracker registry whenever the tracker sources change on main.
+#
+# This repo is "local-link": it builds against a sibling checkout of the Comical monorepo
+# (`../comical`) resolved via tsconfig paths — so CI checks out both repos side by side, installs
+# comical, builds, then runs `publish:registry` and commits the regenerated `index.json` +
+# `trackers/**` back to main.
+#
+# This exists because the registry rotted without it: the contract 2.0.0 bump (2026-07-30) was
+# built and committed here, but nobody re-ran the manual publish, so the served index kept
+# advertising contract 1.0.0 bundles that every current client refused to install — for over two
+# months. A publish that runs itself can't be forgotten.
+#
+# The push uses the default GITHUB_TOKEN; pushes made with GITHUB_TOKEN don't retrigger workflows,
+# so there's no loop — the `[skip ci]` marker and the head-commit guard below are belt-and-suspenders.
+name: Publish registry
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'build.ts'
+      - 'publish.ts'
+      - 'package.json'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-registry
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ci]') }}
+    steps:
+      - name: Check out comical-trackers
+        uses: actions/checkout@v4
+        with:
+          path: comical-trackers
+
+      - name: Check out comical (build/publish dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: porksphere/comical
+          path: comical
+
+      # Pinned, not "latest": this repo publishes content-addressed bundles whose SHA-256 is
+      # verified by every client, and Bun's bundler emits different bytes across releases — an
+      # unpinned runner silently rehashes every bundle (and trips the version-immutability guard)
+      # the day Bun ships an update. Bump deliberately, with the republish that follows.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install comical deps
+        working-directory: comical
+        run: bun install --frozen-lockfile
+
+      # No `bun install` here: this repo has no dependencies of its own, and no test suite yet —
+      # the build (which type-resolves @comical/* through the sibling checkout) is the gate.
+      - name: Build
+        working-directory: comical-trackers
+        run: bun run build
+
+      - name: Publish registry
+        working-directory: comical-trackers
+        env:
+          COMICAL_REGISTRY_KEY: ${{ secrets.COMICAL_REGISTRY_KEY }}
+        run: |
+          # The Ed25519 signing key lives as a repo secret and is materialized to the gitignored
+          # path publish.ts expects. Fail closed: without it, publish.ts would happily regenerate the
+          # index *unsigned*, silently stripping every signature and the registry's publicKey — a
+          # trust downgrade no one would notice until a client stopped verifying.
+          #
+          # This key must be this repo's OWN, never shared with any other registry: a shared key is
+          # a shared publisher identity.
+          if [ -z "$COMICAL_REGISTRY_KEY" ]; then
+            echo "::error::COMICAL_REGISTRY_KEY secret is missing — refusing to publish an unsigned registry."
+            exit 1
+          fi
+          printf '%s' "$COMICAL_REGISTRY_KEY" > registry.key.json
+          COMICAL_KEY=registry.key.json bun run publish:registry
+          rm -f registry.key.json
+
+      - name: Commit regenerated artifacts
+        working-directory: comical-trackers
+        run: |
+          git config user.name porksphere
+          git config user.email nostalico@gmail.com
+          # publish.ts sorts trackers deterministically, so a rebuild of unchanged bundles leaves only
+          # the `updated` timestamp different. Ignore that line (-I) so we don't commit on every run —
+          # only when a bundle or real metadata actually changed.
+          #
+          # Stage BEFORE comparing: `git diff` against the working tree cannot see untracked files,
+          # and a freshly published version directory is untracked. `--cached` counts it as a change.
+          git add -A -- index.json trackers
+          if git diff --cached --quiet -I '"updated":' -- index.json trackers; then
+            echo "Registry unchanged (timestamp-only) — nothing to publish."
+            exit 0
+          fi
+          git commit -m "ci: republish registry [skip ci]"
+          git push
