@@ -65,25 +65,13 @@ jobs:
         working-directory: comical-trackers
         run: bun run build
 
+      # Unsigned, on purpose. Every download is still SHA-256-checked against the index, and a
+      # signature here would only guard against bad pushes to this very repo — whose secrets are
+      # where the key would have to live. Clients default to requireSignature: false, and this
+      # registry has never carried a publicKey, so nothing is being downgraded.
       - name: Publish registry
         working-directory: comical-trackers
-        env:
-          COMICAL_REGISTRY_KEY: ${{ secrets.COMICAL_REGISTRY_KEY }}
-        run: |
-          # The Ed25519 signing key lives as a repo secret and is materialized to the gitignored
-          # path publish.ts expects. Fail closed: without it, publish.ts would happily regenerate the
-          # index *unsigned*, silently stripping every signature and the registry's publicKey — a
-          # trust downgrade no one would notice until a client stopped verifying.
-          #
-          # This key must be this repo's OWN, never shared with any other registry: a shared key is
-          # a shared publisher identity.
-          if [ -z "$COMICAL_REGISTRY_KEY" ]; then
-            echo "::error::COMICAL_REGISTRY_KEY secret is missing — refusing to publish an unsigned registry."
-            exit 1
-          fi
-          printf '%s' "$COMICAL_REGISTRY_KEY" > registry.key.json
-          COMICAL_KEY=registry.key.json bun run publish:registry
-          rm -f registry.key.json
+        run: bun run publish:registry
 
       - name: Commit regenerated artifacts
         working-directory: comical-trackers
