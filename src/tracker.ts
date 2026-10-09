@@ -144,7 +144,7 @@ class AniListTracker extends TrackerBase<Settings> {
   readonly info: TrackerInfo = {
     id: "anilist",
     name: "AniList",
-    version: "0.2.0",
+    version: "0.2.1",
     contractVersion: "2.0.0",
     capabilities: ["library-sync", "status-sync", "search", "settings"],
     rateLimit: { maxConcurrent: 1, minIntervalMs: 700 },
@@ -256,8 +256,11 @@ class AniListTracker extends TrackerBase<Settings> {
     if (update.status !== undefined) vars.status = FROM_TRACKER[update.status];
     // AniList progress is integer chapters; floor decimal chapter numbers
     if (update.chaptersRead !== undefined) vars.progress = Math.floor(update.chaptersRead);
-    // AniList score is 0–100 on POINT_100 format, matching the contract's 0–100 range
-    if (update.score !== undefined) vars.score = update.score;
+    // `scoreRaw`, not `score`: the mutation's `score` is in whatever format the user picked on
+    // AniList (5-star, 10-point, 100-point…), so sending the contract's 0–100 value through it
+    // would write 85/10 or 85/5 — clamped to a top mark — for anyone not on POINT_100. `scoreRaw`
+    // is always 0–100, the same scale `getLibrary` reads back with `score(format: POINT_100)`.
+    if (update.score !== undefined) vars.scoreRaw = Math.round(update.score);
     if (update.notes !== undefined) vars.notes = update.notes;
     // AniList models reading dates as FuzzyDateInput — each component independently nullable — so
     // the contract's `YYYY-MM-DD` splits into it directly. Note the naming: the mutation's finish
@@ -266,9 +269,9 @@ class AniListTracker extends TrackerBase<Settings> {
     if (update.finishedAt !== undefined) vars.completedAt = fuzzyDate(update.finishedAt);
 
     await this.gql<{ SaveMediaListEntry: { id: number } }>(
-      `mutation ($mediaId: Int, $status: MediaListStatus, $progress: Int, $score: Float, $notes: String,
+      `mutation ($mediaId: Int, $status: MediaListStatus, $progress: Int, $scoreRaw: Int, $notes: String,
                  $startedAt: FuzzyDateInput, $completedAt: FuzzyDateInput) {
-        SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress, score: $score, notes: $notes,
+        SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress, scoreRaw: $scoreRaw, notes: $notes,
                            startedAt: $startedAt, completedAt: $completedAt) {
           id
         }
