@@ -27,6 +27,7 @@ import {
   nextPageCursor,
   pageFromCursor,
 } from "@comical/sdk";
+import { otherNames } from "./names.ts";
 
 const GQL_ENDPOINT = "https://graphql.anilist.co";
 const PER_PAGE = 50;
@@ -112,6 +113,8 @@ interface GqlResponse<T> {
 interface MediaTitle {
   romaji: string;
   english: string | null;
+  /** The title in its original script — only requested where the other names matter (list entries). */
+  native?: string | null;
 }
 
 interface CoverImage {
@@ -125,6 +128,8 @@ interface Media {
   description: string | null;
   /** AniList's own chapter count. Null while a series is ongoing or simply unrecorded. */
   chapters?: number | null;
+  /** Other names the series is listed under — only requested for list entries. */
+  synonyms?: string[] | null;
 }
 
 interface MediaListEntry {
@@ -144,7 +149,7 @@ class AniListTracker extends TrackerBase<Settings> {
   readonly info: TrackerInfo = {
     id: "anilist",
     name: "AniList",
-    version: "0.2.1",
+    version: "0.2.2",
     contractVersion: "2.0.0",
     capabilities: ["library-sync", "status-sync", "search", "settings"],
     rateLimit: { maxConcurrent: 1, minIntervalMs: 700 },
@@ -216,7 +221,8 @@ class AniListTracker extends TrackerBase<Settings> {
           mediaList(userId: $userId, type: MANGA, sort: [UPDATED_TIME_DESC]) {
             media {
               id
-              title { romaji english }
+              title { romaji english native }
+              synonyms
               coverImage { medium }
               description(asHtml: false)
               chapters
@@ -237,6 +243,15 @@ class AniListTracker extends TrackerBase<Settings> {
         title,
         status: TO_TRACKER[entry.status] ?? "planning",
       };
+      // Every other name the entry goes by, so a host matching it against a source can try them
+      // all: the one of romaji/english not used as the title, the native script, and the synonyms.
+      const altTitles = otherNames(title, [
+        entry.media.title.english,
+        entry.media.title.romaji,
+        entry.media.title.native,
+        ...(entry.media.synonyms ?? []),
+      ]);
+      if (altTitles.length > 0) item.altTitles = altTitles;
       if (entry.progress > 0) item.chaptersRead = entry.progress;
       // Only meaningful when AniList actually knows the count — it reports null for ongoing series.
       if (entry.media.chapters && entry.media.chapters > 0) item.totalChapters = entry.media.chapters;

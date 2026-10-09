@@ -25,6 +25,7 @@ import {
   encodeCursor,
   offsetFromCursor,
 } from "@comical/sdk";
+import { otherNames } from "./names.ts";
 
 const API_BASE = "https://api.myanimelist.net/v2";
 const AUTH_BASE = "https://myanimelist.net/v1/oauth2";
@@ -88,6 +89,7 @@ const FROM_TRACKER: Readonly<Record<TrackerStatus, MalStatus>> = {
 
 interface MalPicture { medium?: string }
 interface MalTitle { romaji?: string }
+interface MalAlternativeTitles { synonyms?: string[]; en?: string; ja?: string }
 
 interface MalMangaNode {
   id: number;
@@ -95,6 +97,8 @@ interface MalMangaNode {
   main_picture?: MalPicture;
   synopsis?: string;
   num_chapters?: number;
+  /** Only present when `alternative_titles` is requested in `fields` (list entries). */
+  alternative_titles?: MalAlternativeTitles;
 }
 
 interface MalListStatus {
@@ -128,7 +132,7 @@ class MalTracker extends TrackerBase<Settings> {
   readonly info: TrackerInfo = {
     id: "mal",
     name: "MyAnimeList",
-    version: "0.2.1",
+    version: "0.2.2",
     contractVersion: "2.0.0",
     capabilities: ["library-sync", "status-sync", "search", "settings"],
     rateLimit: { maxConcurrent: 1, minIntervalMs: 1000 },
@@ -173,7 +177,7 @@ class MalTracker extends TrackerBase<Settings> {
   async getLibrary(req: PagedRequest = {}): Promise<PagedResults<TrackerLibraryEntry>> {
     const offset = offsetFromCursor(req.cursor);
     const data = await this.get<MalPage<MalListEntry>>("/users/@me/mangalist", {
-      fields: "list_status,main_picture,num_chapters",
+      fields: "list_status,main_picture,num_chapters,alternative_titles",
       sort: "list_updated_at",
       limit: String(PER_PAGE),
       offset: String(offset),
@@ -185,6 +189,11 @@ class MalTracker extends TrackerBase<Settings> {
         title: node.title,
         status: TO_TRACKER[list_status.status] ?? "planning",
       };
+      // Every other name the entry goes by, so a host matching it against a source can try them
+      // all: the English and Japanese titles, then MAL's synonyms.
+      const alt = node.alternative_titles;
+      const altTitles = otherNames(node.title, [alt?.en, alt?.ja, ...(alt?.synonyms ?? [])]);
+      if (altTitles.length > 0) item.altTitles = altTitles;
       if (list_status.num_chapters_read > 0) item.chaptersRead = list_status.num_chapters_read;
       // MAL reports 0 for a series it has no chapter count for (ongoing or simply unrecorded).
       if (node.num_chapters !== undefined && node.num_chapters > 0) item.totalChapters = node.num_chapters;
