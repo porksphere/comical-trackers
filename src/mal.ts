@@ -2,8 +2,8 @@
  * MyAnimeList tracker — syncs manga reading progress to https://myanimelist.net
  *
  * Authentication: OAuth 2.0 with PKCE (plain method). Register one app at
- * https://myanimelist.net/apiconfig (choose "Other" type) and set MAL_CLIENT_ID below.
- * Users just click "Connect MAL" — no credential entry needed.
+ * https://myanimelist.net/apiconfig (choose "Other" type) and set MAL_CLIENT_ID and
+ * MAL_REDIRECT_URI below. Users just click "Connect MAL" — no credential entry needed.
  *
  * API: MAL v2 — https://myanimelist.net/apiconfig/references/api/v2
  * Rate limit: ~60 req/min per IP; 1 req/second keeps comfortably inside that.
@@ -30,9 +30,12 @@ const API_BASE = "https://api.myanimelist.net/v2";
 const AUTH_BASE = "https://myanimelist.net/v1/oauth2";
 const PER_PAGE = 100;
 
-// Register once at https://myanimelist.net/apiconfig (choose "Other" — no secret needed)
-// Set redirect URI to: http://localhost:3100/oauth/callback (+ production URL when deployed)
-const MAL_CLIENT_ID = "70ff35a48559cce9655338a1106f7c88";
+// Registered once at https://myanimelist.net/apiconfig ("Other" app type — a public client, no
+// secret). MAL allows ONE redirect per client id, so it's the hosted relay page that hands the code
+// back to whichever Comical client started the sign-in (a phone, the desktop app, a browser tab) —
+// never a localhost or per-server URL. The two values are a pair: change one, re-register both.
+const MAL_CLIENT_ID = "a86b4db8fe675e82ffcc39faed4c1f98";
+const MAL_REDIRECT_URI = "https://porksphere.github.io/comical-app/oauth-relay.html";
 
 const SETTINGS = defineSettings([
   {
@@ -51,6 +54,7 @@ const SETTINGS = defineSettings([
     exchange: {
       url: `${AUTH_BASE}/token`,
       clientId: MAL_CLIENT_ID,
+      redirectUri: MAL_REDIRECT_URI,
       pkce: true,
       refreshUrl: `${AUTH_BASE}/token`,
     },
@@ -124,7 +128,7 @@ class MalTracker extends TrackerBase<Settings> {
   readonly info: TrackerInfo = {
     id: "mal",
     name: "MyAnimeList",
-    version: "0.2.0",
+    version: "0.2.1",
     contractVersion: "2.0.0",
     capabilities: ["library-sync", "status-sync", "search", "settings"],
     rateLimit: { maxConcurrent: 1, minIntervalMs: 1000 },
