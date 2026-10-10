@@ -132,9 +132,10 @@ class MalTracker extends TrackerBase<Settings> {
   readonly info: TrackerInfo = {
     id: "mal",
     name: "MyAnimeList",
-    version: "0.2.2",
+    version: "0.2.3",
     contractVersion: "2.0.0",
     capabilities: ["library-sync", "status-sync", "search", "settings"],
+    iconUrl: "https://cdn.myanimelist.net/img/sp/icon/apple-touch-icon-256.png",
     rateLimit: { maxConcurrent: 1, minIntervalMs: 1000 },
   };
 

@@ -149,9 +149,10 @@ class AniListTracker extends TrackerBase<Settings> {
   readonly info: TrackerInfo = {
     id: "anilist",
     name: "AniList",
-    version: "0.2.2",
+    version: "0.2.3",
     contractVersion: "2.0.0",
     capabilities: ["library-sync", "status-sync", "search", "settings"],
+    iconUrl: "https://anilist.co/img/icons/android-chrome-512x512.png",
     rateLimit: { maxConcurrent: 1, minIntervalMs: 700 },
   };
 
